@@ -1,6 +1,5 @@
 import pygame
 import pymunk
-import time
 from typing import Dict, List, Optional
 from core.node import Node2D
 from core.object_type import ObjectType, ObjectKind
@@ -59,6 +58,24 @@ class SceneTree:
 
         if node in self.node_state:
             del self.node_state[node]
+
+    def save_state(self) -> None:
+        """Saves state for all nodes."""
+        self._save_recursive(self.root)
+
+    def _save_recursive(self, node: Node2D) -> None:
+        node.save_state()
+        for child in node.children:
+            self._save_recursive(child)
+
+    def restore_state(self) -> None:
+        """Restores state for all nodes."""
+        self._restore_recursive(self.root)
+
+    def _restore_recursive(self, node: Node2D) -> None:
+        node.restore_state()
+        for child in node.children:
+            self._restore_recursive(child)
 
     def start_physics(self) -> None:
         """Initializes the Pymunk space and creates physics bodies for nodes."""

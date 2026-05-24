@@ -34,7 +34,7 @@ class PygameWidget(QLabel):
 class EditorWindow(QMainWindow):
     def __init__(self, width=1400, height=850):
         super().__init__()
-        self.setWindowTitle("MipyGame Engine Pro - Full Context Architecture")
+        self.setWindowTitle("MipyGame Engine Pro - Professional Edition")
         self.resize(width, height)
         if not os.path.exists("assets"): os.makedirs("assets")
 
@@ -57,6 +57,7 @@ class EditorWindow(QMainWindow):
         toolbar.addWidget(self.scene_combo)
 
         btn_new_scene = QPushButton("➕ Сцена"); btn_new_scene.clicked.connect(self.create_scene); toolbar.addWidget(btn_new_scene)
+        btn_del_scene = QPushButton("🗑️ Удалить"); btn_del_scene.clicked.connect(self.delete_scene); toolbar.addWidget(btn_del_scene)
         toolbar.addSeparator()
 
         btn_add = QToolButton(); btn_add.setText("➕ Добавить ▾"); btn_add.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -66,7 +67,7 @@ class EditorWindow(QMainWindow):
         add_menu.addAction("🔤 Текст", lambda: self.spawn_node("text"))
         btn_add.setMenu(add_menu); toolbar.addWidget(btn_add)
         toolbar.addSeparator()
-        act_play = QAction("▶ ЗАПУСК", self); act_play.triggered.connect(self.launch_game); toolbar.addAction(act_play)
+        act_play = QAction("▶ ЗАПУСК ИГРЫ", self); act_play.triggered.connect(self.launch_game); toolbar.addAction(act_play)
 
         # --- ЦЕНТР ---
         view_container = QWidget(); view_layout = QVBoxLayout(view_container)
@@ -99,7 +100,7 @@ class EditorWindow(QMainWindow):
         self.pos_x = QDoubleSpinBox(); self.pos_x.setRange(-5000, 5000); self.pos_x.valueChanged.connect(self.sync_to_node)
         self.pos_y = QDoubleSpinBox(); self.pos_y.setRange(-5000, 5000); self.pos_y.valueChanged.connect(self.sync_to_node)
         self.z_index_box = QSpinBox(); self.z_index_box.setRange(-100, 100); self.z_index_box.valueChanged.connect(self.sync_to_node)
-        form_trans.addRow("Имя:", self.name_edit); form_trans.addRow("Z-Index:", self.z_index_box); form_trans.addRow("X:", self.pos_x); form_trans.addRow("Y:", self.pos_y)
+        form_trans.addRow("Имя:", self.name_edit); form_trans.addRow("Слой (Z):", self.z_index_box); form_trans.addRow("X:", self.pos_x); form_trans.addRow("Y:", self.pos_y)
         ins_main_layout.addWidget(self.grp_transform)
 
         # БЛОК 2: Параметры типа (DNA)
@@ -107,7 +108,7 @@ class EditorWindow(QMainWindow):
         form_type = QFormLayout(self.grp_type)
         self.size_w = QSpinBox(); self.size_w.setRange(1, 2000); self.size_w.valueChanged.connect(self.sync_to_node)
         self.size_h = QSpinBox(); self.size_h.setRange(1, 2000); self.size_h.valueChanged.connect(self.sync_to_node)
-        self.chk_static = QCheckBox("Статичная физика"); self.chk_static.stateChanged.connect(self.sync_to_node)
+        self.chk_static = QCheckBox("Статичный объект"); self.chk_static.stateChanged.connect(self.sync_to_node)
         self.color_btn = QPushButton("Цвет заливки"); self.color_btn.clicked.connect(self.pick_color)
         form_type.addRow("Ширина:", self.size_w); form_type.addRow("Высота:", self.size_h)
         form_type.addRow(self.chk_static); form_type.addRow(self.color_btn)
@@ -119,7 +120,7 @@ class EditorWindow(QMainWindow):
         self.anim_fps = QSpinBox(); self.anim_fps.setRange(1, 60); self.anim_fps.valueChanged.connect(self.sync_to_node)
 
         form_type.addRow("Текст:", self.txt_content); form_type.addRow("Разм. шрифта:", self.txt_font_size)
-        form_type.addRow("Кадров:", self.anim_frames); form_type.addRow("FPS:", self.anim_fps)
+        form_type.addRow("Всего кадров:", self.anim_frames); form_type.addRow("Скорость (FPS):", self.anim_fps)
         ins_main_layout.addWidget(self.grp_type)
 
         ins_main_layout.addStretch()
@@ -127,7 +128,7 @@ class EditorWindow(QMainWindow):
         self.tab_code = QWidget(); code_layout = QVBoxLayout(self.tab_code)
         self.code_edit = QTextEdit(); self.code_edit.setFont(QFont("Consolas", 10))
         btn_save = QPushButton("💾 Сохранить в Тип"); btn_save.clicked.connect(self.save_script)
-        code_layout.addWidget(self.code_edit); code_layout.addWidget(btn_save)
+        code_layout.addWidget(QLabel("Код поведения (Behavior)")); code_layout.addWidget(self.code_edit); code_layout.addWidget(btn_save)
         self.tabs.addTab(self.tab_code, "📄 Скрипт")
 
         self.dock_inspector.setWidget(self.tabs); self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_inspector)
@@ -138,6 +139,12 @@ class EditorWindow(QMainWindow):
         self.asset_list = QListWidget(); self.asset_list.itemDoubleClicked.connect(self.apply_asset)
         asset_layout.addWidget(btn_refresh); asset_layout.addWidget(self.asset_list); self.dock_assets.setWidget(asset_widget)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_assets)
+
+        # МЕНЮ "ОКНА"
+        menubar = self.menuBar(); view_menu = menubar.addMenu("👁️ Окна")
+        view_menu.addAction(self.dock_tree.toggleViewAction())
+        view_menu.addAction(self.dock_inspector.toggleViewAction())
+        view_menu.addAction(self.dock_assets.toggleViewAction())
 
     def setup_default_scene(self):
         t = ObjectType("Player", ObjectKind.SPRITE, width=64, height=64)
@@ -223,6 +230,7 @@ class EditorWindow(QMainWindow):
             if pygame.Rect(pos.x, pos.y, ot.width, ot.height).collidepoint(ax, ay):
                 found = node; break
         if found: self.select_node(found)
+        else: self.selected_node = None; self.tree.clearSelection(); self.clear_ui()
 
     def on_canvas_drag(self, dx, dy, res):
         if self.selected_node and self.selected_node != self.active_scene.root:
@@ -247,9 +255,24 @@ class EditorWindow(QMainWindow):
 
     def switch_scene(self, name):
         if name in self.scenes: self.active_scene_name = name; self.active_scene = self.scenes[name]; self.rebuild_tree_ui()
+
     def create_scene(self):
         n, ok = QInputDialog.getText(self, "Сцена", "Имя:");
-        if ok and n: self.scenes[n] = SceneTree(); self.scene_combo.addItem(n); self.scene_combo.setCurrentText(n)
+        if ok and n:
+            self.scenes[n] = SceneTree()
+            self.scene_combo.blockSignals(True); self.scene_combo.addItem(n); self.scene_combo.setCurrentText(n); self.scene_combo.blockSignals(False)
+            self.switch_scene(n)
+
+    def delete_scene(self):
+        if len(self.scenes) <= 1:
+            QMessageBox.warning(self, "Ошибка", "Нельзя удалить последнюю сцену!")
+            return
+        reply = QMessageBox.question(self, 'Подтверждение', f"Удалить сцену '{self.active_scene_name}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            del self.scenes[self.active_scene_name]
+            idx = self.scene_combo.findText(self.active_scene_name)
+            self.scene_combo.blockSignals(True); self.scene_combo.removeItem(idx); self.scene_combo.blockSignals(False)
+            self.switch_scene(self.scene_combo.currentText())
 
     def refresh_assets(self):
         self.asset_list.clear()
@@ -261,14 +284,30 @@ class EditorWindow(QMainWindow):
         if self.selected_node: self.selected_node.object_type.sprite_path = os.path.join("assets", item.text())
 
     def launch_game(self):
-        self.timer.stop(); self.active_scene.start_physics()
+        # 1. Сохраняем состояние (Construct Classic: игра начинается с чистого листа)
+        self.active_scene.save_state()
+
+        # 2. Настраиваем UI перед запуском
+        was_grid = self.active_scene.show_grid
+        self.active_scene.show_grid = False
+        self.timer.stop()
+
+        # 3. Запуск физики и игры
+        self.active_scene.start_physics()
         pygame.display.init(); screen = pygame.display.set_mode((800, 600)); clock = pygame.time.Clock(); run = True
+
         while run:
             dt = clock.tick(60)/1000.0
             for e in pygame.event.get():
                 if e.type == pygame.QUIT: run = False
             self.active_scene.update(dt); self.active_scene.draw(screen); pygame.display.flip()
-        pygame.display.quit(); pygame.display.init(); self.active_scene.stop_physics(); self.timer.start(16)
+
+        # 4. Завершение игры и восстановление состояния
+        pygame.display.quit(); pygame.display.init()
+        self.active_scene.stop_physics()
+        self.active_scene.restore_state()
+        self.active_scene.show_grid = was_grid
+        self.timer.start(16)
 
     def editor_loop(self):
         pygame.event.pump(); self.active_scene.draw(self.viewport.surface); self.viewport.update_frame()

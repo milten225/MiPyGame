@@ -31,7 +31,10 @@ class Node2D:
         self._position: pygame.math.Vector2 = pygame.math.Vector2(x, y)
         self._z_index: int = z_index
 
-        # Hierarchy attributes (not methods, to follow the 'only methods' rule)
+        # State restoration
+        self._start_position: pygame.math.Vector2 = pygame.math.Vector2(x, y)
+
+        # Hierarchy attributes
         self.parent: Optional['Node2D'] = None
         self.children: List['Node2D'] = []
 
@@ -65,6 +68,15 @@ class Node2D:
     def get_z_index(self) -> int:
         """Returns the Z-index."""
         return self._z_index
+
+    # State management
+    def save_state(self) -> None:
+        """Saves current position as start position."""
+        self._start_position.update(self._position.x, self._position.y)
+
+    def restore_state(self) -> None:
+        """Restores position from start position."""
+        self._position.update(self._start_position.x, self._start_position.y)
 
     def __repr__(self) -> str:
         return f"<Node2D(name='{self._name}', type='{self._object_type.name}', pos={self._position})>"
