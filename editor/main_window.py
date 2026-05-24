@@ -1,18 +1,19 @@
 import sys
 import os
 import pygame
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, 
-                             QLabel, QFormLayout, QLineEdit, QDoubleSpinBox, QSpinBox, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
+                             QLabel, QFormLayout, QLineEdit, QDoubleSpinBox, QSpinBox,
                              QGroupBox, QToolBar, QMainWindow, QTextEdit, QInputDialog,
-                             QPushButton, QTabWidget, QColorDialog, QListWidget, QCheckBox, 
+                             QPushButton, QTabWidget, QColorDialog, QListWidget, QCheckBox,
                              QDockWidget, QSlider, QComboBox, QMenu, QToolButton, QMessageBox)
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap, QAction, QFont
 from core.scene import SceneTree
-from core.node import SpriteNode, RigidBodyNode, AnimatedSpriteNode, TextUINode
+from core.node import Node2D
+from core.object_type import ObjectType
 
 class PygameWidget(QLabel):
-    clicked = pyqtSignal(int, int); dragged = pyqtSignal(int, int, bool) 
+    clicked = pyqtSignal(int, int); dragged = pyqtSignal(int, int, bool)
     panned = pyqtSignal(int, int); dropped = pyqtSignal()
     def __init__(self, width, height):
         super().__init__(); self.setFixedSize(width, height)
@@ -21,7 +22,7 @@ class PygameWidget(QLabel):
         img = QImage(pygame.image.tostring(self.surface, "RGBA", False), self.surface.get_width(), self.surface.get_height(), QImage.Format.Format_RGBA8888)
         self.setPixmap(QPixmap.fromImage(img))
     def mousePressEvent(self, event):
-        self.last_pos = event.pos(); 
+        self.last_pos = event.pos();
         if event.button() == Qt.MouseButton.LeftButton: self.clicked.emit(event.pos().x(), event.pos().y())
     def mouseMoveEvent(self, event):
         if self.last_pos:
@@ -33,7 +34,7 @@ class PygameWidget(QLabel):
 class EditorWindow(QMainWindow):
     def __init__(self, width=1400, height=850):
         super().__init__()
-        self.setWindowTitle("MipyGame Engine Pro - Contextual UX")
+        self.setWindowTitle("MipyGame Engine Pro - Architecture Refactored")
         self.resize(width, height)
         if not os.path.exists("assets"): os.makedirs("assets")
 
@@ -42,7 +43,7 @@ class EditorWindow(QMainWindow):
         self.active_scene_name = "Level_1"
         self.active_scene = self.scenes[self.active_scene_name]
         self.node_map = {}; self.reverse_node_map = {}; self.selected_node = None
-        
+
         self.init_ui(); self.setup_default_scene(); self.refresh_assets()
         self.timer = QTimer(); self.timer.timeout.connect(self.editor_loop); self.timer.start(16)
 
@@ -54,16 +55,15 @@ class EditorWindow(QMainWindow):
         toolbar.addWidget(QLabel(" 🎬 Сцена: "))
         self.scene_combo = QComboBox(); self.scene_combo.addItem("Level_1"); self.scene_combo.currentTextChanged.connect(self.switch_scene)
         toolbar.addWidget(self.scene_combo)
-        
+
         btn_new_scene = QPushButton("➕ Новая сцена"); btn_new_scene.clicked.connect(self.create_scene); toolbar.addWidget(btn_new_scene)
         btn_del_scene = QPushButton("🗑️ Удалить сцену"); btn_del_scene.clicked.connect(self.delete_scene); toolbar.addWidget(btn_del_scene)
         toolbar.addSeparator()
 
         btn_add = QToolButton(); btn_add.setText("➕ Добавить узел ▾"); btn_add.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         add_menu = QMenu()
-        add_menu.addAction("🟩 2D Спрайт", lambda: self.spawn_node("sprite")); add_menu.addAction("🏃‍♂️ Аниматор", lambda: self.spawn_node("anim"))
-        add_menu.addSeparator(); add_menu.addAction("📦 Физика (RigidBody)", lambda: self.spawn_node("physics"))
-        add_menu.addSeparator(); add_menu.addAction("🔤 Текст", lambda: self.spawn_node("ui"))
+        add_menu.addAction("🟩 2D Спрайт", lambda: self.spawn_node("sprite"))
+        add_menu.addAction("📦 Физика (Static)", lambda: self.spawn_node("static"))
         btn_add.setMenu(add_menu); toolbar.addWidget(btn_add)
         toolbar.addSeparator()
         act_play = QAction("▶ ЗАПУСК ИГРЫ", self); act_play.triggered.connect(self.launch_game); toolbar.addAction(act_play)
@@ -90,73 +90,40 @@ class EditorWindow(QMainWindow):
 
         # --- ПРАВО (КОНТЕКСТНЫЙ ИНСПЕКТОР) ---
         self.dock_inspector = QDockWidget("Инспектор", self); self.tabs = QTabWidget()
-        
+
         self.tab_inspector = QWidget(); ins_main_layout = QVBoxLayout(self.tab_inspector); ins_main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
+
         # БЛОК 1: Трансформация (Виден всегда)
-        self.grp_transform = QGroupBox("Трансформация")
+        self.grp_transform = QGroupBox("Трансформация (Instance)")
         form_trans = QFormLayout(self.grp_transform)
         self.name_edit = QLineEdit(); self.name_edit.textChanged.connect(self.sync_to_node)
         self.pos_x = QDoubleSpinBox(); self.pos_x.setRange(-5000, 5000); self.pos_x.valueChanged.connect(self.sync_to_node)
         self.pos_y = QDoubleSpinBox(); self.pos_y.setRange(-5000, 5000); self.pos_y.valueChanged.connect(self.sync_to_node)
-        self.size_w = QSpinBox(); self.size_w.setRange(1, 2000); self.size_w.valueChanged.connect(self.sync_to_node)
-        self.size_h = QSpinBox(); self.size_h.setRange(1, 2000); self.size_h.valueChanged.connect(self.sync_to_node)
         self.z_index_box = QSpinBox(); self.z_index_box.setRange(-100, 100); self.z_index_box.valueChanged.connect(self.sync_to_node)
         form_trans.addRow("Имя:", self.name_edit); form_trans.addRow("Слой (Z):", self.z_index_box)
         form_trans.addRow("Поз X:", self.pos_x); form_trans.addRow("Поз Y:", self.pos_y)
-        form_trans.addRow("Ширина:", self.size_w); form_trans.addRow("Высота:", self.size_h)
         ins_main_layout.addWidget(self.grp_transform)
 
-        # БЛОК 2: Внешний вид (Виден для всех, кроме текста)
-        self.grp_visual = QGroupBox("Внешний вид")
-        form_vis = QFormLayout(self.grp_visual)
-        self.color_btn = QPushButton("Выбрать цвет"); self.color_btn.clicked.connect(self.pick_color)
-        form_vis.addRow("Цвет заливки:", self.color_btn)
-        ins_main_layout.addWidget(self.grp_visual)
-
-        # БЛОК 3: Физика (Динамический)
-        self.grp_physics = QGroupBox("Свойства RigidBody")
-        form_phys = QFormLayout(self.grp_physics)
-        self.chk_static = QCheckBox("Статичный объект (Стена)"); self.chk_static.stateChanged.connect(self.sync_to_node)
-        form_phys.addRow(self.chk_static)
-        ins_main_layout.addWidget(self.grp_physics)
-
-        # БЛОК 4: Анимация (Динамический)
-        self.grp_anim = QGroupBox("Спрайт-Анимация")
-        form_anim = QFormLayout(self.grp_anim)
-        self.anim_frames = QSpinBox(); self.anim_frames.setRange(1, 60); self.anim_frames.valueChanged.connect(self.sync_to_node)
-        self.anim_fps = QSpinBox(); self.anim_fps.setRange(1, 60); self.anim_fps.valueChanged.connect(self.sync_to_node)
-        form_anim.addRow("Всего кадров:", self.anim_frames); form_anim.addRow("Скорость (FPS):", self.anim_fps)
-        ins_main_layout.addWidget(self.grp_anim)
-
-        # БЛОК 5: Текст (Динамический)
-        self.grp_text = QGroupBox("Свойства Текста")
-        form_text = QFormLayout(self.grp_text)
-        self.ui_text = QLineEdit(); self.ui_text.textChanged.connect(self.sync_to_node)
-        self.ui_font_size = QSpinBox(); self.ui_font_size.setRange(10, 200); self.ui_font_size.valueChanged.connect(self.sync_to_node)
-        self.chk_is_ui = QCheckBox("Интерфейс (Игнорировать камеру)"); self.chk_is_ui.stateChanged.connect(self.sync_to_node)
-        self.text_color_btn = QPushButton("Цвет текста"); self.text_color_btn.clicked.connect(self.pick_color)
-        form_text.addRow("Содержимое:", self.ui_text)
-        form_text.addRow("Размер шрифта:", self.ui_font_size)
-        form_text.addRow("Рендер:", self.chk_is_ui)
-        form_text.addRow("Цвет:", self.text_color_btn)
-        ins_main_layout.addWidget(self.grp_text)
+        # БЛОК 2: Свойства типа (ObjectType)
+        self.grp_type = QGroupBox("Свойства Типа (DNA)")
+        form_type = QFormLayout(self.grp_type)
+        self.type_name_label = QLabel("Тип: -")
+        self.chk_static = QCheckBox("Статичный (Физика)"); self.chk_static.stateChanged.connect(self.sync_to_node)
+        self.sprite_path_edit = QLineEdit(); self.sprite_path_edit.setReadOnly(True)
+        form_type.addRow(self.type_name_label)
+        form_type.addRow(self.chk_static)
+        form_type.addRow("Спрайт:", self.sprite_path_edit)
+        ins_main_layout.addWidget(self.grp_type)
 
         ins_main_layout.addStretch() # Поджимаем всё наверх
         self.tabs.addTab(self.tab_inspector, "⚙ Свойства")
 
-        # Вкладки скриптов и аудио
+        # Вкладки скриптов
         self.tab_code = QWidget(); code_layout = QVBoxLayout(self.tab_code)
         self.code_edit = QTextEdit(); self.code_edit.setFont(QFont("Consolas", 10))
-        btn_save = QPushButton("💾 Сохранить скрипт"); btn_save.clicked.connect(self.save_script)
-        code_layout.addWidget(self.code_edit); code_layout.addWidget(btn_save)
+        btn_save = QPushButton("💾 Сохранить скрипт (в Тип)"); btn_save.clicked.connect(self.save_script)
+        code_layout.addWidget(QLabel("Код поведения (Behavior)")); code_layout.addWidget(self.code_edit); code_layout.addWidget(btn_save)
         self.tabs.addTab(self.tab_code, "📄 Скрипт")
-        
-        self.tab_audio = QWidget(); audio_layout = QVBoxLayout(self.tab_audio)
-        self.vol_music = QSlider(Qt.Orientation.Horizontal); self.vol_music.setRange(0, 100); self.vol_music.setValue(100)
-        self.vol_music.valueChanged.connect(lambda v: pygame.mixer.music.set_volume(v / 100.0))
-        audio_layout.addWidget(QLabel("🎵 Глобальная громкость музыки")); audio_layout.addWidget(self.vol_music); audio_layout.addStretch()
-        self.tabs.addTab(self.tab_audio, "🔊 Аудио")
 
         self.dock_inspector.setWidget(self.tabs); self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock_inspector)
 
@@ -206,13 +173,14 @@ class EditorWindow(QMainWindow):
         self.tree.expandAll()
 
     def _add_node_to_tree(self, node, parent_item):
-        item = QTreeWidgetItem(parent_item, [node.name])
+        item = QTreeWidgetItem(parent_item, [node.get_name()])
         self.node_map[id(item)] = node; self.reverse_node_map[node] = item
         for child in node.children: self._add_node_to_tree(child, item)
 
     def setup_default_scene(self):
-        box = RigidBodyNode("TestBox", 50, 50, is_static=False); box.position.update(350, 250)
-        self.active_scene.root.add_child(box)
+        box_type = ObjectType("DynamicBox", is_static=False)
+        box = Node2D(box_type, "TestBox", x=350, y=250)
+        self.active_scene.add_node(box)
         self.rebuild_tree_ui()
 
     def reset_camera(self):
@@ -223,7 +191,7 @@ class EditorWindow(QMainWindow):
         if self.selected_node == self.active_scene.root:
             QMessageBox.warning(self, "Ошибка", "Нельзя удалить корень сцены!")
             return
-        if self.selected_node.parent: self.selected_node.parent.remove_child(self.selected_node)
+        self.active_scene.remove_node(self.selected_node)
         self.rebuild_tree_ui()
 
     def keyPressEvent(self, event):
@@ -237,47 +205,61 @@ class EditorWindow(QMainWindow):
                 if file.endswith(('.png', '.jpg', '.wav', '.mp3')): self.asset_list.addItem(file)
 
     def apply_asset(self, item):
-        if self.selected_node and item.text().endswith(('.png', '.jpg')) and not isinstance(self.selected_node, TextUINode):
-            self.selected_node.image_path = os.path.join("assets", item.text())
-            if hasattr(self.selected_node, 'update_surface'): self.selected_node.update_surface()
+        if self.selected_node and item.text().endswith(('.png', '.jpg')):
+            self.selected_node.object_type.sprite_path = os.path.join("assets", item.text())
+            self.refresh_ui()
 
-    def toggle_grid(self, state): self.active_scene.show_grid = (state == 2)
+    def toggle_grid(self, state): # SceneTree doesn't have show_grid anymore in my refactor, but we can add it back if needed
+        pass
 
     def spawn_node(self, type_str):
-        if type_str == "sprite": obj = SpriteNode(f"Sprite_{len(self.node_map)}", 50, 50)
-        elif type_str == "physics": obj = RigidBodyNode(f"Box_{len(self.node_map)}", 50, 50)
-        elif type_str == "ui": obj = TextUINode(f"Text_{len(self.node_map)}")
-        elif type_str == "anim": obj = AnimatedSpriteNode(f"Anim_{len(self.node_map)}", 100, 100)
-        
-        obj.position.update(self.active_scene.camera_x + 350, self.active_scene.camera_y + 250)
-        self.active_scene.root.add_child(obj)
+        if type_str == "sprite":
+            t = ObjectType("SpriteType")
+            obj = Node2D(t, f"Sprite_{len(self.node_map)}")
+        elif type_str == "static":
+            t = ObjectType("StaticType", is_static=True)
+            obj = Node2D(t, f"Static_{len(self.node_map)}")
+        else:
+            t = ObjectType("GenericType")
+            obj = Node2D(t, f"Node_{len(self.node_map)}")
+
+        obj.set_position(self.active_scene.camera_x + 350, self.active_scene.camera_y + 250)
+        self.active_scene.add_node(obj)
         self.rebuild_tree_ui(); self.select_node(obj)
 
     def on_camera_pan(self, dx, dy): self.active_scene.camera_x -= dx; self.active_scene.camera_y -= dy
 
     def on_canvas_click(self, x, y):
-        node = self.active_scene.get_node_at(x + self.active_scene.camera_x, y + self.active_scene.camera_y)
-        if node: self.select_node(node)
-        else: self.active_scene.clear_selection(); self.selected_node = None; self.tree.clearSelection(); self.clear_ui()
+        # We need a hit-test logic. Our current SceneTree doesn't have get_node_at.
+        # For simplicity in this sprint, we'll use the tree selection or implement a simple hit-test here.
+        found = None
+        for node in self.active_scene._get_all_nodes_flat(self.active_scene.root):
+            if node == self.active_scene.root: continue
+            pos = node.get_position()
+            rect = pygame.Rect(pos.x, pos.y, 50, 50)
+            if rect.collidepoint(x + self.active_scene.camera_x, y + self.active_scene.camera_y):
+                found = node
+                break
+
+        if found: self.select_node(found)
+        else: self.selected_node = None; self.tree.clearSelection(); self.clear_ui()
 
     def on_canvas_drag(self, dx, dy, is_resizing):
         if self.selected_node and self.selected_node != self.active_scene.root:
-            if is_resizing and hasattr(self.selected_node, 'width'):
-                self.selected_node.width += dx; self.selected_node.height += dy; self.selected_node.update_surface()
-            else:
-                self.selected_node.position.x += dx; self.selected_node.position.y += dy
+            pos = self.selected_node.get_position()
+            self.selected_node.set_position(pos.x + dx, pos.y + dy)
             self.refresh_ui()
 
     def on_canvas_drop(self):
         if self.selected_node and self.chk_snap.isChecked() and self.selected_node != self.active_scene.root:
-            g = self.active_scene.grid_size
-            self.selected_node.position.x = round(self.selected_node.position.x / g) * g
-            self.selected_node.position.y = round(self.selected_node.position.y / g) * g
+            g = 50 # Grid size
+            pos = self.selected_node.get_position()
+            self.selected_node.set_position(round(pos.x / g) * g, round(pos.y / g) * g)
             self.refresh_ui()
 
     def select_node(self, node):
-        self.active_scene.clear_selection(); self.selected_node = node; self.selected_node.selected = True
-        ui_item = self.reverse_node_map.get(node); 
+        self.selected_node = node
+        ui_item = self.reverse_node_map.get(node);
         if ui_item: self.tree.setCurrentItem(ui_item)
         self.refresh_ui()
 
@@ -285,105 +267,70 @@ class EditorWindow(QMainWindow):
         self.name_edit.blockSignals(True); self.name_edit.clear(); self.name_edit.blockSignals(False)
         self.pos_x.blockSignals(True); self.pos_x.setValue(0); self.pos_x.blockSignals(False)
         self.pos_y.blockSignals(True); self.pos_y.setValue(0); self.pos_y.blockSignals(False)
-        self.size_w.blockSignals(True); self.size_w.setValue(0); self.size_w.blockSignals(False)
-        self.size_h.blockSignals(True); self.size_h.setValue(0); self.size_h.blockSignals(False)
-        self.grp_visual.setVisible(False); self.grp_physics.setVisible(False); self.grp_anim.setVisible(False); self.grp_text.setVisible(False)
         self.code_edit.clear()
 
-    # МАГИЯ КОНТЕКСТНОГО ИНСПЕКТОРА
     def refresh_ui(self):
         if not self.selected_node: return
-        self.name_edit.blockSignals(True); self.name_edit.setText(self.selected_node.name); self.name_edit.blockSignals(False)
-        self.pos_x.blockSignals(True); self.pos_x.setValue(self.selected_node.position.x); self.pos_x.blockSignals(False)
-        self.pos_y.blockSignals(True); self.pos_y.setValue(self.selected_node.position.y); self.pos_y.blockSignals(False)
-        self.z_index_box.blockSignals(True); self.z_index_box.setValue(self.selected_node.z_index); self.z_index_box.blockSignals(False)
-        
-        # Обновляем ширину и высоту (если есть)
-        if hasattr(self.selected_node, 'width'):
-            self.size_w.blockSignals(True); self.size_w.setValue(self.selected_node.width); self.size_w.blockSignals(False)
-            self.size_h.blockSignals(True); self.size_h.setValue(self.selected_node.height); self.size_h.blockSignals(False)
+        self.name_edit.blockSignals(True); self.name_edit.setText(self.selected_node.get_name()); self.name_edit.blockSignals(False)
+        pos = self.selected_node.get_position()
+        self.pos_x.blockSignals(True); self.pos_x.setValue(pos.x); self.pos_x.blockSignals(False)
+        self.pos_y.blockSignals(True); self.pos_y.setValue(pos.y); self.pos_y.blockSignals(False)
+        self.z_index_box.blockSignals(True); self.z_index_box.setValue(self.selected_node.get_z_index()); self.z_index_box.blockSignals(False)
 
-        # ДИНАМИЧЕСКОЕ СКРЫТИЕ БЛОКОВ
-        self.grp_visual.setVisible(not isinstance(self.selected_node, TextUINode))
-        self.grp_physics.setVisible(isinstance(self.selected_node, RigidBodyNode))
-        self.grp_anim.setVisible(isinstance(self.selected_node, AnimatedSpriteNode))
-        self.grp_text.setVisible(isinstance(self.selected_node, TextUINode))
+        # ObjectType properties
+        self.type_name_label.setText(f"Тип: {self.selected_node.object_type.name}")
+        self.chk_static.blockSignals(True); self.chk_static.setChecked(self.selected_node.object_type.is_static); self.chk_static.blockSignals(False)
+        self.sprite_path_edit.setText(self.selected_node.object_type.sprite_path)
 
-        if isinstance(self.selected_node, RigidBodyNode): 
-            self.chk_static.blockSignals(True); self.chk_static.setChecked(self.selected_node.is_static); self.chk_static.blockSignals(False)
-        if isinstance(self.selected_node, AnimatedSpriteNode): 
-            self.anim_frames.blockSignals(True); self.anim_frames.setValue(self.selected_node.frames); self.anim_frames.blockSignals(False)
-            self.anim_fps.blockSignals(True); self.anim_fps.setValue(self.selected_node.anim_fps); self.anim_fps.blockSignals(False)
-        if isinstance(self.selected_node, TextUINode):
-            self.ui_text.blockSignals(True); self.ui_text.setText(self.selected_node.text); self.ui_text.blockSignals(False)
-            self.ui_font_size.blockSignals(True); self.ui_font_size.setValue(self.selected_node.font_size); self.ui_font_size.blockSignals(False)
-            self.chk_is_ui.blockSignals(True); self.chk_is_ui.setChecked(self.selected_node.is_ui); self.chk_is_ui.blockSignals(False)
-            
-        self.code_edit.setPlainText(self.selected_node.custom_code)
+        self.code_edit.setPlainText(self.selected_node.object_type.behavior_code)
 
     def sync_to_node(self):
         if not self.selected_node: return
-        self.selected_node.name = self.name_edit.text()
-        self.selected_node.position.x = self.pos_x.value(); self.selected_node.position.y = self.pos_y.value()
-        self.selected_node.z_index = self.z_index_box.value()
-        
-        # Запрещаем менять размер текстового узла вручную (он зависит от шрифта)
-        if hasattr(self.selected_node, 'width') and not isinstance(self.selected_node, TextUINode):
-            self.selected_node.width = self.size_w.value(); self.selected_node.height = self.size_h.value()
-            self.selected_node.update_surface()
+        self.selected_node.set_name(self.name_edit.text())
+        self.selected_node.set_position(self.pos_x.value(), self.pos_y.value())
+        self.selected_node.set_z_index(self.z_index_box.value())
 
-        if isinstance(self.selected_node, RigidBodyNode): self.selected_node.is_static = self.chk_static.isChecked()
-        if isinstance(self.selected_node, AnimatedSpriteNode): 
-            self.selected_node.frames = self.anim_frames.value(); self.selected_node.anim_fps = self.anim_fps.value()
-        if isinstance(self.selected_node, TextUINode):
-            self.selected_node.text = self.ui_text.text()
-            self.selected_node.font_size = self.ui_font_size.value()
-            self.selected_node.is_ui = self.chk_is_ui.isChecked()
-            self.selected_node.update_surface()
-            
+        # Sync ObjectType
+        self.selected_node.object_type.is_static = self.chk_static.isChecked()
+
         ui_item = self.reverse_node_map.get(self.selected_node)
-        if ui_item: ui_item.setText(0, self.selected_node.name)
-
-    def pick_color(self):
-        if not self.selected_node: return
-        color = QColorDialog.getColor()
-        if color.isValid():
-            if isinstance(self.selected_node, TextUINode):
-                self.selected_node.color = (color.red(), color.green(), color.blue())
-            else:
-                self.selected_node.image_path = "" 
-                self.selected_node.color = (color.red(), color.green(), color.blue())
-            self.selected_node.update_surface()
+        if ui_item: ui_item.setText(0, self.selected_node.get_name())
 
     def save_script(self):
-        if self.selected_node: self.selected_node.custom_code = self.code_edit.toPlainText()
+        if self.selected_node: self.selected_node.object_type.behavior_code = self.code_edit.toPlainText()
 
     def on_node_selected(self, item, column):
-        node = self.node_map.get(id(item)); 
+        node = self.node_map.get(id(item));
         if node: self.select_node(node)
 
     def launch_game(self):
-        self.timer.stop(); self.active_scene.root.save_state()
-        was_grid = self.active_scene.show_grid; self.active_scene.show_grid = False; self.active_scene.clear_selection()
+        self.timer.stop()
+        # Save positions for restoration (simple manual way for now)
+        saved_positions = {}
+        for node in self.active_scene._get_all_nodes_flat(self.active_scene.root):
+            saved_positions[node] = pygame.math.Vector2(node.get_position())
+
         start_cx, start_cy = self.active_scene.camera_x, self.active_scene.camera_y
         self.active_scene.camera_x = 0; self.active_scene.camera_y = 0
 
         self.active_scene.start_physics()
 
         pygame.display.init(); screen = pygame.display.set_mode((800, 600)); clock = pygame.time.Clock(); running = True
-        
+
         while running:
             dt = clock.tick(60) / 1000.0
             for e in pygame.event.get():
                 if e.type == pygame.QUIT: running = False
             self.active_scene.update(dt); self.active_scene.draw(screen); pygame.display.flip()
-            
+
         pygame.display.quit(); pygame.display.init()
         self.active_scene.stop_physics()
-        
-        self.active_scene.root.restore_state()
-        self.active_scene.camera_x, self.active_scene.camera_y = start_cx, start_cy; self.active_scene.show_grid = was_grid
-        if self.selected_node: self.selected_node.selected = True
+
+        # Restore positions
+        for node, pos in saved_positions.items():
+            node.set_position(pos.x, pos.y)
+
+        self.active_scene.camera_x, self.active_scene.camera_y = start_cx, start_cy
         self.timer.start(16)
 
     def editor_loop(self):
