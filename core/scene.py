@@ -18,6 +18,12 @@ class SceneTree:
         self.camera_x: float = 0.0
         self.camera_y: float = 0.0
 
+        # Grid settings
+        self.show_grid: bool = True
+        self.grid_size: int = 50
+        self.background_color: tuple = (30, 30, 35)
+        self.grid_color: tuple = (50, 50, 55)
+
         # Physics world
         self.space: Optional[pymunk.Space] = None
         self.gravity: tuple = (0, 900)
@@ -111,6 +117,19 @@ class SceneTree:
 
     def draw(self, surface: pygame.Surface) -> None:
         """Renders the scene."""
+        # Fill background to prevent smearing
+        surface.fill(self.background_color)
+
+        # Draw grid
+        if self.show_grid:
+            w, h = surface.get_size()
+            offset_x = -self.camera_x % self.grid_size
+            offset_y = -self.camera_y % self.grid_size
+            for x in range(int(offset_x), w, self.grid_size):
+                pygame.draw.line(surface, self.grid_color, (x, 0), (x, h))
+            for y in range(int(offset_y), h, self.grid_size):
+                pygame.draw.line(surface, self.grid_color, (0, y), (w, y))
+
         # Sort all nodes by Z-index for correct draw order
         all_nodes = self._get_all_nodes_flat(self.root)
         all_nodes.sort(key=lambda n: n.get_z_index())
@@ -134,7 +153,7 @@ class SceneTree:
                 except:
                     pygame.draw.rect(surface, (255, 0, 255), rect) # Error purple
             else:
-                pygame.draw.rect(surface, (100, 150, 250), rect) # Default blue
+                pygame.draw.rect(surface, node.object_type.color, rect)
 
     def _get_all_nodes_flat(self, node: Node2D) -> List[Node2D]:
         flat_list = [node]

@@ -209,8 +209,8 @@ class EditorWindow(QMainWindow):
             self.selected_node.object_type.sprite_path = os.path.join("assets", item.text())
             self.refresh_ui()
 
-    def toggle_grid(self, state): # SceneTree doesn't have show_grid anymore in my refactor, but we can add it back if needed
-        pass
+    def toggle_grid(self, state):
+        self.active_scene.show_grid = (state == 2)
 
     def spawn_node(self, type_str):
         if type_str == "sprite":
