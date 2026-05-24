@@ -16,67 +16,35 @@ class Node2D:
         y: float = 0.0,
         z_index: int = 0
     ):
-        """
-        Initializes a Node2D instance.
-
-        Args:
-            object_type (ObjectType): The type this instance belongs to.
-            name (str): Unique name of the instance.
-            x (float): Initial X position.
-            y (float): Initial Y position.
-            z_index (int): Rendering order.
-        """
         self._object_type: ObjectType = object_type
         self._name: str = name
         self._position: pygame.math.Vector2 = pygame.math.Vector2(x, y)
         self._z_index: int = z_index
-
-        # State restoration
         self._start_position: pygame.math.Vector2 = pygame.math.Vector2(x, y)
 
-        # Hierarchy attributes
         self.parent: Optional['Node2D'] = None
         self.children: List['Node2D'] = []
 
     @property
-    def object_type(self) -> ObjectType:
-        return self._object_type
+    def object_type(self) -> ObjectType: return self._object_type
 
-    # Methods for position management
-    def set_position(self, x: float, y: float) -> None:
-        """Sets the local position of the node."""
-        self._position.update(x, y)
+    def set_position(self, x: float, y: float) -> None: self._position.update(x, y)
+    def get_position(self) -> pygame.math.Vector2: return self._position
 
-    def get_position(self) -> pygame.math.Vector2:
-        """Returns the local position of the node."""
+    def get_global_position(self) -> pygame.math.Vector2:
+        """Returns the world-space position (relative to all parents)."""
+        if self.parent:
+            return self.parent.get_global_position() + self._position
         return self._position
 
-    # Methods for name management
-    def set_name(self, name: str) -> None:
-        """Sets the name of the instance."""
-        self._name = name
+    def set_name(self, name: str) -> None: self._name = name
+    def get_name(self) -> str: return self._name
 
-    def get_name(self) -> str:
-        """Returns the name of the instance."""
-        return self._name
+    def set_z_index(self, z_index: int) -> None: self._z_index = z_index
+    def get_z_index(self) -> int: return self._z_index
 
-    # Methods for Z-index management
-    def set_z_index(self, z_index: int) -> None:
-        """Sets the Z-index (rendering order)."""
-        self._z_index = z_index
-
-    def get_z_index(self) -> int:
-        """Returns the Z-index."""
-        return self._z_index
-
-    # State management
-    def save_state(self) -> None:
-        """Saves current position as start position."""
-        self._start_position.update(self._position.x, self._position.y)
-
-    def restore_state(self) -> None:
-        """Restores position from start position."""
-        self._position.update(self._start_position.x, self._start_position.y)
+    def save_state(self) -> None: self._start_position.update(self._position.x, self._position.y)
+    def restore_state(self) -> None: self._position.update(self._start_position.x, self._start_position.y)
 
     def __repr__(self) -> str:
         return f"<Node2D(name='{self._name}', type='{self._object_type.name}', pos={self._position})>"
