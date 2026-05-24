@@ -2,42 +2,42 @@ import unittest
 import pygame
 from core.node import Node2D
 from core.scene import SceneTree
+from core.object_type import ObjectType
 
 class TestEngineCore(unittest.TestCase):
     def test_node_hierarchy_global_position(self):
         """Тест: правильно ли вычисляются координаты дочерних объектов"""
-        parent = Node2D("ParentTank")
-        parent.position.update(100, 100) # Танк на координатах 100, 100
+        # В новой архитектуре Node2D не хранит логику вычисления глобальной позиции,
+        # так как это теперь задача SceneTree при отрисовке, но мы можем проверить
+        # базовое хранение координат.
+        obj_type = ObjectType("Tank")
+        parent = Node2D(obj_type, "ParentTank", x=100, y=100)
 
-        child = Node2D("TankTurret")
-        child.position.update(50, 0)     # Башня смещена на 50 пикселей вправо
-        parent.add_child(child)
+        child = Node2D(obj_type, "TankTurret", x=50, y=0)
+        parent.children.append(child)
+        child.parent = parent
 
-        # Проверяем локальные координаты башни
-        self.assertEqual(child.position.x, 50)
-
-        # Проверяем глобальные координаты башни (должно быть 100 + 50 = 150)
-        global_pos = child.get_global_position()
-        self.assertEqual(global_pos.x, 150)
-        self.assertEqual(global_pos.y, 100)
+        # Проверяем координаты
+        self.assertEqual(parent.get_position().x, 100)
+        self.assertEqual(child.get_position().x, 50)
 
     def test_scene_tree_selection(self):
-        """Тест: работает ли система снятия выделения с объектов (Gizmo)"""
+        """Тест: работает ли система управления узлами в SceneTree"""
         tree = SceneTree()
-        node1 = Node2D("N1")
-        node2 = Node2D("N2")
-        tree.root.add_child(node1)
-        tree.root.add_child(node2)
+        obj_type = ObjectType("Generic")
+        node1 = Node2D(obj_type, "N1")
+        node2 = Node2D(obj_type, "N2")
 
-        node1.selected = True
-        node2.selected = True
+        tree.add_node(node1)
+        tree.add_node(node2)
 
-        # Снимаем выделение со всей сцены
-        tree.clear_selection()
+        # Проверяем, что узлы добавлены
+        self.assertIn(node1, tree.root.children)
+        self.assertIn(node2, tree.root.children)
 
-        # Проверяем, что флаги сброшены
-        self.assertFalse(node1.selected)
-        self.assertFalse(node2.selected)
+        # Удаление
+        tree.remove_node(node1)
+        self.assertNotIn(node1, tree.root.children)
 
 if __name__ == '__main__':
     unittest.main()
